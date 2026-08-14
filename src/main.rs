@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use aws_sdk_s3::{
     config::{Builder, Credentials, Region},
     error::ProvideErrorMetadata,
+    primitives::ByteStream,
     Client,
 };
 use config::{Config, S3Connection};
@@ -91,11 +92,17 @@ async fn copy_all(source: &Client, destination: &Client, config: &Config) -> Res
                 .with_context(|| format!("downloading R2 object {key}"))?;
 
             let content_type = object.content_type().map(str::to_owned);
+            let body = object
+                .body
+                .collect()
+                .await
+                .with_context(|| format!("reading R2 object {key}"))?
+                .into_bytes();
             let mut put = destination
                 .put_object()
                 .bucket(&config.destination.bucket)
                 .key(key)
-                .body(object.body);
+                .body(ByteStream::from(body));
             if let Some(content_type) = content_type {
                 put = put.content_type(content_type);
             }
