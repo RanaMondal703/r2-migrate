@@ -17,6 +17,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         Self::from_values(
             &required_env("R2_ACCOUNT_ID")?,
+            std::env::var("R2_ENDPOINT").ok(),
             &required_env("R2_ACCESS_KEY")?,
             &required_env("R2_SECRET_KEY")?,
             std::env::var("R2_BUCKET").ok(),
@@ -30,6 +31,7 @@ impl Config {
     #[allow(clippy::too_many_arguments)]
     pub fn from_values(
         account_id: &str,
+        r2_endpoint_override: Option<String>,
         r2_access_key: &str,
         r2_secret_key: &str,
         r2_bucket: Option<String>,
@@ -50,9 +52,14 @@ impl Config {
             bail!("S3_ENDPOINT must start with http:// or https://");
         }
 
+        let r2_endpoint = match r2_endpoint_override.filter(|value| !value.trim().is_empty()) {
+            Some(value) => value.trim().trim_end_matches('/').to_owned(),
+            None => format!("https://{}.r2.cloudflarestorage.com", account_id.trim()),
+        };
+
         Ok(Self {
             r2: S3Connection {
-                endpoint: format!("https://{}.r2.cloudflarestorage.com", account_id.trim()),
+                endpoint: r2_endpoint,
                 access_key: r2_access_key.to_owned(),
                 secret_key: r2_secret_key.to_owned(),
                 bucket: bucket_or_default(r2_bucket),
@@ -89,6 +96,7 @@ mod tests {
     fn defaults_both_buckets_to_aci() {
         let config = Config::from_values(
             "account",
+            None,
             "r2-key",
             "r2-secret",
             None,
@@ -107,6 +115,7 @@ mod tests {
     fn rejects_the_destination_endpoint_placeholder() {
         let result = Config::from_values(
             "account",
+            None,
             "r2-key",
             "r2-secret",
             None,
@@ -117,5 +126,41 @@ mod tests {
         );
 
         assert!(matches!(result, Err(error) if error.to_string().contains("S3_ENDPOINT")));
+    }
+
+    #[test]
+    fn r2_endpoint_override_replaces_the_cloudflare_endpoint() {
+        let config = Config::from_values(
+            "account",
+            Some("http://127.0.0.1:9000".to_owned()),
+            "r2-key",
+            "r2-secret",
+            None,
+            "https://minio.example.com",
+            "s3-key",
+            "s3-secret",
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(config.r2.endpoint, "http://127.0.0.1:9000");
+    }
+
+    #[test]
+    fn empty_r2_endpoint_override_falls_back_to_cloudflare() {
+        let config = Config::from_values(
+            "account",
+            Some("   ".to_owned()),
+            "r2-key",
+            "r2-secret",
+            None,
+            "https://minio.example.com",
+            "s3-key",
+            "s3-secret",
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(config.r2.endpoint, "https://account.r2.cloudflarestorage.com");
     }
 }

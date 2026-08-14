@@ -11,6 +11,8 @@ Copies every object from a Cloudflare R2 bucket to an S3-compatible destination,
 
 `R2_BUCKET` and `S3_BUCKET` default to `aci` when empty. The migrator uses path-style S3 requests, which work well with MinIO and most self-hosted S3-compatible services.
 
+To test locally without touching real R2, run the source against a local MinIO container and set `R2_ENDPOINT` to its URL (e.g. `http://127.0.0.1:9000`); leave it empty in production to use the real `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` endpoint.
+
 ## Run
 
 ```bash
